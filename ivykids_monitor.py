@@ -1,13 +1,17 @@
+import re
 import time
 import requests
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from bs4 import BeautifulSoup
 
 import config
 
+TZ = ZoneInfo("Asia/Taipei")
+
 
 def log(msg):
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
+    print(f"[{datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S')}] {msg}", flush=True)
 
 
 def send_line_message(token, user_id, message):
@@ -86,27 +90,35 @@ class IvykidsMonitor:
             soup = BeautifulSoup(r.text, "html.parser")
             rows = soup.select("#sortable tr")
             records = []
-            for row in rows[1:n + 1]:
-                cols = [td.get_text(strip=True) for td in row.find_all("td")]
+            for row in rows[:n + 1]:
+                cols = row.find_all("td")
                 if len(cols) < 7:
                     continue
+                # 從編輯連結抓真實資料庫 ID（form.php?id=158 → "158"）
+                edit_link = row.select_one('a[href*="form.php?id="]')
+                if not edit_link:
+                    continue
+                match = re.search(r"id=(\d+)", edit_link["href"])
+                if not match:
+                    continue
+                db_id = match.group(1)
+
                 record = {
-                    "id": cols[6],       # 建立時間作為唯一 ID
-                    "status": cols[0],
-                    "date": cols[1],
-                    "name": cols[2],
-                    "phone": cols[4],
-                    "created_at": cols[6],
+                    "id": db_id,
+                    "status": cols[0].get_text(strip=True),
+                    "date": cols[1].get_text(strip=True),
+                    "name": cols[2].get_text(strip=True),
+                    "phone": cols[4].get_text(strip=True),
+                    "created_at": cols[6].get_text(strip=True),
                 }
-                if record["id"]:
-                    records.append(record)
+                records.append(record)
             log(f"讀取到 {len(records)} 筆預約資料")
             return records
         except Exception as e:
             log(f"讀取資料例外：{e}")
             return []
 
-    def check_and_notify(self):
+    def check_and_notify(self, init=False):
         if not self._is_logged_in():
             log("Session 已失效，重新登入...")
             if not self.login():
@@ -115,6 +127,14 @@ class IvykidsMonitor:
         records = self.get_latest_records(n=5)
         if not records:
             log("本次未取得任何資料，跳過比對")
+            return
+
+        if init:
+            # 初次啟動：只記錄現有資料，不發通知，避免舊資料洗版
+            for r in records:
+                self.seen_ids.add(r["id"])
+            self._save_seen_ids()
+            log(f"初始化完成，已記錄 {len(records)} 筆現有資料（不發通知）")
             return
 
         new_items = [r for r in records if r["id"] not in self.seen_ids]
@@ -143,6 +163,10 @@ class IvykidsMonitor:
         if not self.login():
             log("初始登入失敗，請確認設定後重試")
             return
+
+        # 第一次執行：若無歷史記錄則初始化（避免把所有舊資料都當新預約通知）
+        if not self.seen_ids:
+            self.check_and_notify(init=True)
 
         while True:
             try:
