@@ -1,0 +1,6 @@
+n_env/
+__pycache__/
+*.pyc
+last_record.txt
+login_debug.png
+monitor.log
