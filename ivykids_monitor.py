@@ -130,11 +130,13 @@ class IvykidsMonitor:
             return
 
         if init:
-            # 初次啟動：只記錄現有資料，不發通知，避免舊資料洗版
+            # 初次啟動：只把「時間已過」和「已取消」的舊資料標為 seen
+            # 「預約正常」的未來場次保留，讓下次 check 仍能通知
             for r in records:
-                self.seen_ids.add(r["id"])
+                if "已過" in r["status"] or "取消" in r["status"]:
+                    self.seen_ids.add(r["id"])
             self._save_seen_ids()
-            log(f"初始化完成，已記錄 {len(records)} 筆現有資料（不發通知）")
+            log(f"初始化完成，已略過 {len(self.seen_ids)} 筆舊資料（預約正常的場次保留待通知）")
             return
 
         new_items = [r for r in records if r["id"] not in self.seen_ids]
