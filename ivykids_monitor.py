@@ -109,6 +109,7 @@ class IvykidsMonitor:
                     "date": cols[1].get_text(strip=True),
                     "name": cols[2].get_text(strip=True),
                     "phone": cols[4].get_text(strip=True),
+                    "source": cols[5].get_text(strip=True),
                     "created_at": cols[6].get_text(strip=True),
                 }
                 records.append(record)
@@ -144,12 +145,14 @@ class IvykidsMonitor:
         if new_items:
             log(f"發現 {len(new_items)} 筆新預約！")
             for item in new_items:
+                source_line = f"來源：{item['source']}\n" if item['source'] else ""
                 msg = (
                     f"\n【新預約通知】\n"
                     f"狀態：{item['status']}\n"
                     f"預約時間：{item['date']}\n"
                     f"姓名：{item['name']}\n"
                     f"電話：{item['phone']}\n"
+                    f"{source_line}"
                     f"建立時間：{item['created_at']}"
                 )
                 send_line_message(config.LINE_CHANNEL_ACCESS_TOKEN, config.LINE_USER_ID, msg)
